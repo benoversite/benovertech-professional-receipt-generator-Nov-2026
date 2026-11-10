@@ -6,7 +6,6 @@ import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { ReceiptDocument } from "@/components/ReceiptDocument";
 import { Button } from "@/components/ui/button";
-import { downloadBlob, renderReceiptToJpeg, renderReceiptToPdf, uploadReceiptPdf } from "@/lib/pdf";
 import { getLocalReceipts, isLocalReceipt, isNetworkError } from "@/lib/localReceipts";
 import { whatsappLinkForCustomer, BUSINESS, OPEN_SITE_USER_ID } from "@/lib/business";
 import { ArrowLeft, Copy, Download, ImageDown, Loader2, MessageCircle } from "lucide-react";
@@ -53,6 +52,7 @@ const ReceiptView = () => {
     if (!receipt || !printRef.current) return;
     setDownloading(true);
     try {
+      const { downloadBlob, renderReceiptToPdf } = await import("@/lib/pdf");
       const blob = await renderReceiptToPdf(printRef.current, receipt.receipt_number);
       downloadBlob(blob, `${receipt.receipt_number}.pdf`);
       toast.success("PDF downloaded.");
@@ -67,6 +67,7 @@ const ReceiptView = () => {
     if (!receipt || !printRef.current) return;
     setDownloading(true);
     try {
+      const { downloadBlob, renderReceiptToJpeg } = await import("@/lib/pdf");
       const blob = await renderReceiptToJpeg(printRef.current);
       downloadBlob(blob, `${receipt.receipt_number}.jpg`);
       toast.success("JPEG downloaded.");
@@ -81,6 +82,7 @@ const ReceiptView = () => {
     if (!receipt || !printRef.current) return;
     setSharing(true);
     try {
+      const { downloadBlob, renderReceiptToPdf, uploadReceiptPdf } = await import("@/lib/pdf");
       const currentUserId = OPEN_SITE_USER_ID;
       if (!currentUserId) {
         throw new Error("Open-site user ID is not configured. Set VITE_SUPABASE_OPEN_USER_ID.");
