@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  category     String
+  costPrice    Float
+  sellingPrice Float
+  stock        Int
+  barcode      String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  saleItems SaleItem[]
+
+  @@index([barcode])
+  @@index([category])
+}
+
+model Sale {
+  id             String   @id @default(cuid())
+  totalAmount    Float
+  totalProfit    Float
+  customerName   String
+  customerPhone  String?
+  paymentMethod  String   // "cash", "transfer", "card"
+  createdAt      DateTime @default(now())
+
+  items SaleItem[]
+
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  productId String
+  quantity  Int
+  price     Float   // selling price at time of sale
+  profit    Float   // profit per item
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
