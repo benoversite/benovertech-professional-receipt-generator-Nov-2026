@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { Input } from "@/components/ui/input";
@@ -150,6 +150,38 @@ const CreateReceipt = () => {
         throw new Error("Open-site user ID is not configured. Set VITE_SUPABASE_OPEN_USER_ID.");
       }
 
+      const saveLocally = async (reason: "network" | "configuration") => {
+        const { receipt, imageOmitted } = await createLocalReceipt(
+          {
+            user_id: currentUserId,
+            customer_name: parsed.data.customer_name,
+            customer_phone: parsed.data.customer_phone,
+            customer_address: parsed.data.customer_address ?? null,
+            product_name: parsed.data.product_name,
+            product_color: parsed.data.product_color ?? null,
+            serial_number: parsed.data.serial_number ?? null,
+            part_number: parsed.data.part_number ?? null,
+            price: parsed.data.price,
+            product_image_url: imageRemoved ? null : existingImageUrl,
+            warranty_note: parsed.data.warranty_note,
+          },
+          imageFile
+        );
+        toast.warning(
+          imageOmitted
+            ? "Receipt saved on this device only; the product image could not be saved."
+            : reason === "configuration"
+              ? "Supabase is not configured. Receipt saved on this device only."
+              : "Connection unavailable. Receipt saved on this device only."
+        );
+        navigate(`/receipt/${receipt.id}`);
+      };
+
+      if (!isSupabaseConfigured) {
+        await saveLocally("configuration");
+        return;
+      }
+
       try {
         const { data: rn, error: rnErr } = await supabase.rpc("generate_receipt_number", {
           _user_id: currentUserId,
@@ -191,28 +223,7 @@ const CreateReceipt = () => {
         navigate(`/receipt/${inserted.id}`);
       } catch (error) {
         if (!isNetworkError(error)) throw error;
-        const { receipt, imageOmitted } = await createLocalReceipt(
-          {
-            user_id: currentUserId,
-            customer_name: parsed.data.customer_name,
-            customer_phone: parsed.data.customer_phone,
-            customer_address: parsed.data.customer_address ?? null,
-            product_name: parsed.data.product_name,
-            product_color: parsed.data.product_color ?? null,
-            serial_number: parsed.data.serial_number ?? null,
-            part_number: parsed.data.part_number ?? null,
-            price: parsed.data.price,
-            product_image_url: imageRemoved ? null : existingImageUrl,
-            warranty_note: parsed.data.warranty_note,
-          },
-          imageFile
-        );
-        toast.warning(
-          imageOmitted
-            ? "Receipt saved on this device only; the product image could not be saved."
-            : "Connection unavailable. Receipt saved on this device only."
-        );
-        navigate(`/receipt/${receipt.id}`);
+        await saveLocally("network");
       }
     } catch (err: unknown) {
       console.error("Receipt issue failed:", err);

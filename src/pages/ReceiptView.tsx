@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Receipt } from "@/types/receipt";
 import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { ReceiptDocument } from "@/components/ReceiptDocument";
 import { Button } from "@/components/ui/button";
 import { getCachedRemoteReceipt, getLocalReceipts, isLocalReceipt, isNetworkError } from "@/lib/localReceipts";
+import { isSupabaseConfigured, SUPABASE_CONFIG_ERROR, supabase } from "@/integrations/supabase/client";
 import { whatsappLinkForCustomer, BUSINESS, OPEN_SITE_USER_ID } from "@/lib/business";
 import { ArrowLeft, Copy, Download, ImageDown, Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -37,6 +37,10 @@ const ReceiptView = () => {
         if (cachedReceipt) {
           setReceipt(cachedReceipt);
           setLoading(false);
+        }
+        if (!isSupabaseConfigured) {
+          if (!cachedReceipt) toast.error(SUPABASE_CONFIG_ERROR);
+          return;
         }
         const { data, error } = await supabase.from("receipts").select("*").eq("id", id).maybeSingle();
         if (error) throw error;
@@ -109,7 +113,7 @@ const ReceiptView = () => {
       const blob = await renderReceiptToPdf(printRef.current, receipt.receipt_number);
       const localReceipt = isLocalReceipt(receipt.id);
       let pdfUrl = localReceipt ? null : receipt.pdf_url;
-      if (!localReceipt) {
+      if (!localReceipt && isSupabaseConfigured) {
         try {
           pdfUrl = await uploadReceiptPdf(blob, currentUserId, receipt.receipt_number);
           const { error } = await supabase

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, SUPABASE_CONFIG_ERROR, supabase } from "@/integrations/supabase/client";
 
 type AuthContextValue = {
   user: User | null;
@@ -19,6 +19,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
     // Set up listener FIRST
     const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
       setSession(sess);
@@ -34,11 +38,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    if (!isSupabaseConfigured) return { error: SUPABASE_CONFIG_ERROR };
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error?.message ?? null };
   };
 
   const signUp = async (email: string, password: string) => {
+    if (!isSupabaseConfigured) return { error: SUPABASE_CONFIG_ERROR };
     const redirectUrl = `${window.location.origin}/`;
     const { error } = await supabase.auth.signUp({
       email,
@@ -49,6 +55,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
+    if (!isSupabaseConfigured) return;
     await supabase.auth.signOut();
   };
 

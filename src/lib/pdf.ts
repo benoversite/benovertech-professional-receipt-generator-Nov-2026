@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, SUPABASE_CONFIG_ERROR, supabase } from "@/integrations/supabase/client";
 
 async function renderReceiptCanvas(element: HTMLElement): Promise<HTMLCanvasElement> {
   return html2canvas(element, {
@@ -69,6 +69,7 @@ export async function uploadReceiptPdf(
   userId: string,
   receiptNumber: string
 ): Promise<string> {
+  if (!isSupabaseConfigured) throw new Error(SUPABASE_CONFIG_ERROR);
   const path = `${userId}/${receiptNumber}.pdf`;
   const { error } = await supabase.storage
     .from("receipt-pdfs")

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, SUPABASE_CONFIG_ERROR, supabase } from "@/integrations/supabase/client";
 import { Receipt } from "@/types/receipt";
 import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
@@ -86,6 +86,7 @@ const Dashboard = () => {
   }, []);
 
   const refreshMonthStats = useCallback(async () => {
+    if (!isSupabaseConfigured) throw new Error(SUPABASE_CONFIG_ERROR);
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
@@ -112,6 +113,13 @@ const Dashboard = () => {
       try {
         const savedLocally = getLocalReceipts();
         if (active) setLocalReceipts(savedLocally);
+        if (!isSupabaseConfigured) {
+          if (active) {
+            setLoading(false);
+            toast.error(SUPABASE_CONFIG_ERROR);
+          }
+          return;
+        }
 
         const { data, error, count } = await supabase
           .from("receipts")
@@ -156,6 +164,7 @@ const Dashboard = () => {
   }, [hadCacheOnLoad, updateCache]);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) return;
     let active = true;
     void refreshMonthStats()
       .then((stats) => {
@@ -179,6 +188,10 @@ const Dashboard = () => {
   }, [refreshMonthStats, updateCache]);
 
   const loadMore = async () => {
+    if (!isSupabaseConfigured) {
+      toast.error(SUPABASE_CONFIG_ERROR);
+      return;
+    }
     setLoadingMore(true);
     try {
       const { data, error } = await supabase
