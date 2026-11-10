@@ -6,7 +6,7 @@ import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 import { ReceiptDocument } from "@/components/ReceiptDocument";
 import { Button } from "@/components/ui/button";
-import { getLocalReceipts, isLocalReceipt, isNetworkError } from "@/lib/localReceipts";
+import { getCachedRemoteReceipt, getLocalReceipts, isLocalReceipt, isNetworkError } from "@/lib/localReceipts";
 import { whatsappLinkForCustomer, BUSINESS, OPEN_SITE_USER_ID } from "@/lib/business";
 import { ArrowLeft, Copy, Download, ImageDown, Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -23,23 +23,42 @@ const ReceiptView = () => {
 
   useEffect(() => {
     if (!id) return;
+    let active = true;
     (async () => {
+      let cachedReceipt: Receipt | undefined;
       try {
         const localReceipt = getLocalReceipts().find((saved) => saved.id === id);
         if (localReceipt) {
           setReceipt(localReceipt);
+          setLoading(false);
           return;
+        }
+        cachedReceipt = getCachedRemoteReceipt(id);
+        if (cachedReceipt) {
+          setReceipt(cachedReceipt);
+          setLoading(false);
         }
         const { data, error } = await supabase.from("receipts").select("*").eq("id", id).maybeSingle();
         if (error) throw error;
+        if (!active) return;
         if (!data) toast.error("Receipt not found");
         else setReceipt(data as Receipt);
       } catch (error) {
-        toast.error(isNetworkError(error) ? "Could not load this receipt while offline." : error instanceof Error ? error.message : "Could not load receipt.");
+        if (active) {
+          if (cachedReceipt && isNetworkError(error)) {
+            toast.warning("Connection unavailable. Showing the saved receipt.");
+          } else {
+            toast.error(isNetworkError(error) ? "Could not load this receipt while offline." : error instanceof Error ? error.message : "Could not load receipt.");
+          }
+        }
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
+
+    return () => {
+      active = false;
+    };
   }, [id]);
 
   // Set page title for SEO

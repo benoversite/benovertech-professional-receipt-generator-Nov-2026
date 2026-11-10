@@ -58,6 +58,21 @@ export function isLocalReceipt(id: string): boolean {
   return getLocalReceipts().some((receipt) => receipt.id === id);
 }
 
+export function getCachedRemoteReceipt(id: string): Receipt | undefined {
+  try {
+    const stored = localStorage.getItem("benovertech-dashboard-cache");
+    if (!stored) return undefined;
+    const parsed: unknown = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object" || !("receipts" in parsed) || !Array.isArray(parsed.receipts)) {
+      throw new Error("Saved dashboard receipt cache is invalid.");
+    }
+    return parsed.receipts.find((receipt): receipt is Receipt => isReceipt(receipt) && receipt.id === id);
+  } catch (error) {
+    console.warn("Could not read the cached receipt:", error);
+    return undefined;
+  }
+}
+
 export async function createLocalReceipt(
   input: LocalReceiptInput,
   productImage?: File | null

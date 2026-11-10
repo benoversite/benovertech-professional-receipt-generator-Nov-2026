@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Receipt } from "@/types/receipt";
@@ -11,48 +11,207 @@ import { getLocalReceipts, isNetworkError } from "@/lib/localReceipts";
 import { Plus, Search, FileText, ArrowUpRight, Receipt as ReceiptIcon, Wallet, Calendar } from "lucide-react";
 import { toast } from "sonner";
 
+const PAGE_SIZE = 50;
+const DASHBOARD_CACHE_KEY = "benovertech-dashboard-cache";
+const RECEIPT_COLUMNS =
+  "id, user_id, receipt_number, customer_name, customer_phone, customer_address, product_name, product_color, serial_number, part_number, price, product_image_url, pdf_url, warranty_note, created_at, updated_at";
+
+type DashboardCache = {
+  receipts: Receipt[];
+  totalCount: number;
+  monthCount: number;
+  monthSales: number;
+};
+
+function readDashboardCache(): DashboardCache | null {
+  try {
+    const stored = localStorage.getItem(DASHBOARD_CACHE_KEY);
+    if (!stored) return null;
+    const value: unknown = JSON.parse(stored);
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !Array.isArray((value as DashboardCache).receipts) ||
+      typeof (value as DashboardCache).totalCount !== "number" ||
+      typeof (value as DashboardCache).monthCount !== "number" ||
+      typeof (value as DashboardCache).monthSales !== "number"
+    ) {
+      localStorage.removeItem(DASHBOARD_CACHE_KEY);
+      return null;
+    }
+    return value as DashboardCache;
+  } catch (error) {
+    console.warn("Could not read the dashboard cache:", error);
+    return null;
+  }
+}
+
+function writeDashboardCache(cache: DashboardCache): void {
+  try {
+    localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(cache));
+  } catch (error) {
+    console.warn("Could not save the dashboard cache:", error);
+  }
+}
+
+function mergeReceipts(remote: Receipt[], local: Receipt[]): Receipt[] {
+  const merged = new Map<string, Receipt>();
+  [...remote, ...local].forEach((receipt) => merged.set(receipt.id, receipt));
+  return [...merged.values()].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [cache, setCache] = useState(readDashboardCache);
+  const cacheRef = useRef(cache);
+  const hadCacheOnLoad = useRef(cache !== null).current;
+  const [remoteReceipts, setRemoteReceipts] = useState<Receipt[]>(cache?.receipts ?? []);
+  const [localReceipts, setLocalReceipts] = useState<Receipt[]>([]);
+  const [remoteCount, setRemoteCount] = useState(cache?.totalCount ?? 0);
+  const [monthStats, setMonthStats] = useState({
+    count: cache?.monthCount ?? 0,
+    sales: cache?.monthSales ?? 0,
+  });
+  const [loading, setLoading] = useState(!cache);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [remoteOffset, setRemoteOffset] = useState(cache?.receipts.length ?? 0);
   const [query, setQuery] = useState("");
 
+  const updateCache = useCallback((next: DashboardCache) => {
+    cacheRef.current = next;
+    setCache(next);
+    writeDashboardCache(next);
+  }, []);
+
+  const refreshMonthStats = useCallback(async () => {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const { data, error } = await supabase
+      .from("receipts")
+      .select("price, created_at")
+      .gte("created_at", monthStart.toISOString());
+    if (error) throw error;
+
+    const stats = (data ?? []).reduce(
+      (total, receipt) => ({
+        count: total.count + 1,
+        sales: total.sales + Number(receipt.price),
+      }),
+      { count: 0, sales: 0 }
+    );
+    setMonthStats(stats);
+    return stats;
+  }, []);
+
   useEffect(() => {
-    const fetch = async () => {
-      setLoading(true);
+    let active = true;
+    const load = async () => {
       try {
-        const localReceipts = getLocalReceipts();
-        const { data, error } = await supabase
+        const savedLocally = getLocalReceipts();
+        if (active) setLocalReceipts(savedLocally);
+
+        const { data, error, count } = await supabase
           .from("receipts")
-          .select("*")
-          .order("created_at", { ascending: false });
+          .select(RECEIPT_COLUMNS, { count: "exact" })
+          .order("created_at", { ascending: false })
+          .range(0, PAGE_SIZE - 1);
         if (error) throw error;
-        const merged = new Map<string, Receipt>();
-        [...((data ?? []) as Receipt[]), ...localReceipts].forEach((receipt) =>
-          merged.set(receipt.id, receipt)
-        );
-        setReceipts(
-          [...merged.values()].sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          )
-        );
+        if (!active) return;
+
+        const firstPage = (data ?? []) as Receipt[];
+        const nextCount = count ?? firstPage.length;
+        setRemoteReceipts(firstPage);
+        setRemoteCount(nextCount);
+        setRemoteOffset(firstPage.length);
+        const previous = cacheRef.current;
+        updateCache({
+          receipts: firstPage,
+          totalCount: nextCount,
+          monthCount: previous?.monthCount ?? 0,
+          monthSales: previous?.monthSales ?? 0,
+        });
       } catch (error) {
         if (isNetworkError(error)) {
           try {
-            setReceipts(getLocalReceipts());
-            toast.warning("Connection unavailable. Showing receipts saved on this device.");
+            const savedLocally = getLocalReceipts();
+            if (active) setLocalReceipts(savedLocally);
+            if (!hadCacheOnLoad) toast.warning("Connection unavailable. Showing receipts saved on this device.");
           } catch (storageError) {
             toast.error(storageError instanceof Error ? storageError.message : "Could not read locally saved receipts.");
           }
         } else {
           toast.error(error instanceof Error ? error.message : "Could not load receipts.");
         }
-      } finally {
-        setLoading(false);
       }
+      if (active) setLoading(false);
     };
-    fetch();
-  }, []);
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [hadCacheOnLoad, updateCache]);
+
+  useEffect(() => {
+    let active = true;
+    void refreshMonthStats()
+      .then((stats) => {
+        if (!active) return;
+        const previous = cacheRef.current;
+        updateCache({
+          receipts: previous?.receipts ?? [],
+          totalCount: previous?.totalCount ?? 0,
+          monthCount: stats.count,
+          monthSales: stats.sales,
+        });
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          toast.error(error instanceof Error ? error.message : "Could not refresh monthly sales.");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [refreshMonthStats, updateCache]);
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const { data, error } = await supabase
+        .from("receipts")
+        .select(RECEIPT_COLUMNS)
+        .order("created_at", { ascending: false })
+        .range(remoteOffset, remoteOffset + PAGE_SIZE - 1);
+      if (error) throw error;
+
+      const nextPage = (data ?? []) as Receipt[];
+      const merged = new Map(remoteReceipts.map((receipt) => [receipt.id, receipt]));
+      nextPage.forEach((receipt) => merged.set(receipt.id, receipt));
+      const next = [...merged.values()];
+      setRemoteReceipts(next);
+      const previous = cacheRef.current;
+      updateCache({
+        receipts: next.slice(0, PAGE_SIZE),
+        totalCount: previous?.totalCount ?? remoteCount,
+        monthCount: previous?.monthCount ?? monthStats.count,
+        monthSales: previous?.monthSales ?? monthStats.sales,
+      });
+      setRemoteOffset((offset) => offset + nextPage.length);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load older receipts.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const receipts = useMemo(
+    () => mergeReceipts(remoteReceipts, localReceipts),
+    [remoteReceipts, localReceipts]
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -66,15 +225,29 @@ const Dashboard = () => {
   }, [receipts, query]);
 
   const stats = useMemo(() => {
-    const total = receipts.reduce((s, r) => s + Number(r.price), 0);
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const monthCount = receipts.filter((r) => r.created_at >= monthStart).length;
-    const monthSales = receipts
-      .filter((r) => r.created_at >= monthStart)
-      .reduce((s, r) => s + Number(r.price), 0);
-    return { total, count: receipts.length, monthCount, monthSales };
-  }, [receipts]);
+    const localOnly = localReceipts.filter(
+      (receipt) => !remoteReceipts.some((remote) => remote.id === receipt.id)
+    );
+    return {
+      count: remoteCount + localOnly.length,
+      monthCount:
+        monthStats.count +
+        localOnly.filter((receipt) => {
+          const created = new Date(receipt.created_at);
+          const now = new Date();
+          return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
+        }).length,
+      monthSales:
+        monthStats.sales +
+        localOnly
+          .filter((receipt) => {
+            const created = new Date(receipt.created_at);
+            const now = new Date();
+            return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
+          })
+          .reduce((sum, receipt) => sum + Number(receipt.price), 0),
+    };
+  }, [localReceipts, monthStats, remoteCount, remoteReceipts]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -112,7 +285,10 @@ const Dashboard = () => {
         {/* List */}
         <section className="mt-10 animate-fade-up" style={{ animationDelay: "120ms" }}>
           <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
-            <h2 className="display-font text-xl font-semibold tracking-tight">Recent receipts</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="display-font text-xl font-semibold tracking-tight">Recent receipts</h2>
+              {loading && cache && <span className="text-xs text-muted-foreground">Refreshing…</span>}
+            </div>
             <div className="relative w-full sm:w-80">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
@@ -130,6 +306,8 @@ const Dashboard = () => {
                 <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-gold" />
                 <div className="mt-3 text-sm text-muted-foreground">Loading your receipts…</div>
               </div>
+            ) : loading && filtered.length === 0 ? (
+              <div className="p-10 text-center text-sm text-muted-foreground">Loading your receipts…</div>
             ) : filtered.length === 0 ? (
               <EmptyState hasQuery={!!query} />
             ) : (
@@ -149,6 +327,13 @@ const Dashboard = () => {
                           </div>
                         )}
                       </div>
+                      {!loading && remoteOffset < remoteCount && (
+                        <div className="mt-5 text-center">
+                          <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+                            {loadingMore ? "Loading…" : "Load older receipts"}
+                          </Button>
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold truncate text-foreground group-hover:text-gold transition">{r.customer_name}</span>

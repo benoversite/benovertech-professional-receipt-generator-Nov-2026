@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLocalReceipt,
+  getCachedRemoteReceipt,
   getLocalReceipts,
   isNetworkError,
   saveLocalReceipt,
@@ -57,6 +58,22 @@ describe("local receipt storage", () => {
 
     expect(getLocalReceipts()).toHaveLength(1);
     expect(getLocalReceipts()[0].customer_name).toBe("Updated Customer");
+  });
+
+  it("reads a remote receipt from the dashboard cache", () => {
+    const now = new Date().toISOString();
+    const receipt = {
+      ...receiptInput,
+      id: "remote-receipt",
+      receipt_number: "BNV-2026-11-0001",
+      pdf_url: null,
+      created_at: now,
+      updated_at: now,
+    };
+    localStorage.setItem("benovertech-dashboard-cache", JSON.stringify({ receipts: [receipt] }));
+
+    expect(getCachedRemoteReceipt(receipt.id)).toEqual(receipt);
+    expect(getCachedRemoteReceipt("missing-receipt")).toBeUndefined();
   });
 
   it("identifies network fetch failures without masking other errors", () => {
