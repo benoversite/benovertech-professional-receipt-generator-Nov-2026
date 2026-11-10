@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { BUSINESS, formatNGN, OPEN_SITE_USER_ID } from "@/lib/business";
 import { createLocalReceipt, getLocalReceipts, isNetworkError } from "@/lib/localReceipts";
+import { getErrorMessage } from "@/lib/errors";
 import { toast } from "sonner";
 import { Receipt } from "@/types/receipt";
 import { ArrowLeft, Check, ImagePlus, Loader2, Sparkles, Upload, X } from "lucide-react";
@@ -227,7 +228,7 @@ const CreateReceipt = () => {
       }
     } catch (err: unknown) {
       console.error("Receipt issue failed:", err);
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toast.error(getErrorMessage(err, "Could not issue the receipt."));
     } finally {
       setSubmitting(false);
     }

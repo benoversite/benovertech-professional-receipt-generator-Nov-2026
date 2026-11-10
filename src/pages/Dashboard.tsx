@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatNGN } from "@/lib/business";
 import { getLocalReceipts, isNetworkError } from "@/lib/localReceipts";
+import { getErrorMessage } from "@/lib/errors";
 import { Plus, Search, FileText, ArrowUpRight, Receipt as ReceiptIcon, Wallet, Calendar } from "lucide-react";
 import { toast } from "sonner";
 
@@ -148,10 +149,10 @@ const Dashboard = () => {
             if (active) setLocalReceipts(savedLocally);
             if (!hadCacheOnLoad) toast.warning("Connection unavailable. Showing receipts saved on this device.");
           } catch (storageError) {
-            toast.error(storageError instanceof Error ? storageError.message : "Could not read locally saved receipts.");
+            toast.error(getErrorMessage(storageError, "Could not read locally saved receipts."));
           }
         } else {
-          toast.error(error instanceof Error ? error.message : "Could not load receipts.");
+          toast.error(getErrorMessage(error, "Could not load receipts."));
         }
       }
       if (active) setLoading(false);
@@ -179,7 +180,7 @@ const Dashboard = () => {
       })
       .catch((error: unknown) => {
         if (active) {
-          toast.error(error instanceof Error ? error.message : "Could not refresh monthly sales.");
+          toast.error(getErrorMessage(error, "Could not refresh monthly sales."));
         }
       });
     return () => {
@@ -215,7 +216,7 @@ const Dashboard = () => {
       });
       setRemoteOffset((offset) => offset + nextPage.length);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not load older receipts.");
+      toast.error(getErrorMessage(error, "Could not load older receipts."));
     } finally {
       setLoadingMore(false);
     }
@@ -273,7 +274,7 @@ const Dashboard = () => {
             <div>
               <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">Dashboard</div>
               <h1 className="display-font mt-2 text-4xl sm:text-5xl font-semibold tracking-tight">
-                Good day. <span className="gold-text">Let's issue receipts.</span>
+                Good day, Mr. Ben. <span className="gold-text">Let's issue receipts.</span>
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 Premium, branded, and ready to share over WhatsApp in one tap.

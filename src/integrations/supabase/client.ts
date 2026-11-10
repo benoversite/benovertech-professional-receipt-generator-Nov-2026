@@ -1,5 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
+
+declare global {
+  var __benovertechSupabaseClient: SupabaseClient<Database> | undefined;
+}
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim();
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
@@ -48,11 +52,17 @@ const fetchWithTimeout: typeof fetch = async (input, init) => {
 const supabaseUrl = isSupabaseConfigured ? SUPABASE_URL! : 'http://127.0.0.1:54321';
 const supabaseKey = isSupabaseConfigured ? SUPABASE_PUBLISHABLE_KEY! : 'missing-supabase-configuration';
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
-  global: { fetch: fetchWithTimeout },
-  auth: {
-    storage: typeof localStorage === 'undefined' ? undefined : localStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-});
+export const supabase =
+  globalThis.__benovertechSupabaseClient ??
+  createClient<Database>(supabaseUrl, supabaseKey, {
+    global: { fetch: fetchWithTimeout },
+    auth: {
+      storage: typeof localStorage === 'undefined' ? undefined : localStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
+
+if (import.meta.env.DEV) {
+  globalThis.__benovertechSupabaseClient = supabase;
+}

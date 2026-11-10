@@ -24,6 +24,7 @@ const Index = () => {
 
       <main className="container mx-auto px-6 pt-16 pb-24">
         <div className="max-w-3xl animate-fade-up">
+          <p className="mb-5 text-sm font-medium text-muted-foreground">Good day, Mr. Ben.</p>
           <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
             <Sparkles className="h-3 w-3 text-gold" /> Premium POS · Lagos
           </div>

@@ -10,7 +10,7 @@ CREATE POLICY "Open site can view public receipts"
 
 CREATE POLICY "Open site can create public receipts"
   ON public.receipts FOR INSERT
-  WITH CHECK (NEW.user_id = '11111111-1111-1111-1111-111111111111');
+  WITH CHECK (user_id = '11111111-1111-1111-1111-111111111111');
 
 CREATE POLICY "Anonymous open-site can upload product images"
   ON storage.objects FOR INSERT

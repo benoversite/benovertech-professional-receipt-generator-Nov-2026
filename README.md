@@ -42,3 +42,5 @@ Add these environment variables in the Vercel project settings for each deployme
 - `VITE_SUPABASE_OPEN_USER_ID` — optional; defaults to the open-site user configured by the database migrations.
 
 Redeploy after changing environment variables. These are browser-visible settings; do not use a Supabase service-role key.
+
+Apply any pending SQL files in `supabase/migrations/` to the Supabase project as well as deploying the frontend. The public receipt policies are required for creating and updating receipts.
